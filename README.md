@@ -47,16 +47,28 @@ Copy `.env.example` to `.env.local`. Everything is optional for local use.
 - **Payments** — create a Stripe account (test mode), a Product with a $5/month recurring Price, then set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`. For webhooks locally, install the Stripe CLI and run `stripe listen --forward-to localhost:3000/api/stripe/webhook`, then put the printed `whsec_...` in `STRIPE_WEBHOOK_SECRET`. Test card: `4242 4242 4242 4242`.
 - **AI suggestions** — set `ANTHROPIC_API_KEY`. Default model is `claude-opus-5-5`; set `ANTHROPIC_MODEL=claude-haiku-5-5` for a much cheaper per-suggestion cost.
 
-## Deploying
+## Deploying on Railway
 
-The app stores data in SQLite, so host it somewhere with a **persistent disk** (e.g. Railway, Render, Fly.io, a VPS) and point `DATABASE_PATH` at that disk. Serverless hosts like Vercel don't keep files between requests — to use one, swap `lib/db.ts` for a hosted database (Postgres/Turso).
+The repo includes `railway.json` (build `npm run build`, start `npm start`, health check on `/`) and pins Node 24 via `engines` in `package.json`. The app stores data in SQLite, so it **needs a volume** — without one, every deploy wipes all accounts.
 
-```bash
-npm run build
-npm start
-```
+1. Sign up at https://railway.com with your GitHub account.
+2. **New Project → Deploy from GitHub repo →** pick `FirstStep`. The first deploy starts automatically.
+3. Add a disk: right-click the service (or press `Ctrl/Cmd+K`) → **Attach volume**, mount path **`/data`**.
+4. Service → **Variables**, add:
+   - `DATABASE_PATH` = `/data/firststep.db`
+   - `APP_URL` = your public URL (next step), e.g. `https://firststep-production.up.railway.app`
+5. Service → **Settings → Networking → Generate Domain**. Copy it into `APP_URL`.
+6. Railway redeploys after variable changes. Open the domain and sign up to check it works.
 
-Set `APP_URL` to your public URL and add your production Stripe webhook endpoint (`/api/stripe/webhook`) in the Stripe dashboard.
+Keep it at **one replica** — SQLite on a volume can't be shared between instances.
+
+Payments and AI (optional, add as Variables later):
+
+- `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID` — from your Stripe dashboard (test mode first).
+- `STRIPE_WEBHOOK_SECRET` — in Stripe, **Developers → Webhooks → Add endpoint** with URL `<APP_URL>/api/stripe/webhook` and events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`; copy its signing secret.
+- `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL=claude-haiku-5-5`).
+
+Other hosts work too if they offer a persistent disk (Render, Fly.io, a VPS). Serverless hosts like Vercel don't keep files between requests — to use one, swap `lib/db.ts` for a hosted database (Postgres/Turso).
 
 ## Project layout
 
