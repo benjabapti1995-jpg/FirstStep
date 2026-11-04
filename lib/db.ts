@@ -65,12 +65,25 @@ const globalForDb = globalThis as unknown as { __firststepDb?: DatabaseSync };
 function open(): DatabaseSync {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   const db = new DatabaseSync(DB_PATH);
+  // Wait for a lock instead of failing at once if another process holds it.
+  db.exec("PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
   return db;
 }
 
-export const db: DatabaseSync = globalForDb.__firststepDb ?? open();
-if (process.env.NODE_ENV !== "production") globalForDb.__firststepDb = db;
+function getDb(): DatabaseSync {
+  return (globalForDb.__firststepDb ??= open());
+}
+
+// Opened on first use, not at import: `next build` imports every route in
+// parallel workers, and opening the file there made them fight over the lock.
+export const db: DatabaseSync = new Proxy({} as DatabaseSync, {
+  get(_target, prop) {
+    const real = getDb();
+    const value = Reflect.get(real, prop, real);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
 
 export const now = () => Date.now();
 export const newId = () => crypto.randomUUID();
